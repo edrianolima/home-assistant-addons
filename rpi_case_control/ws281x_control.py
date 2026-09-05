@@ -5,6 +5,7 @@ import socket
 import textwrap
 import threading
 import time
+import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
@@ -29,6 +30,8 @@ OLED_CYCLE_MODES = ("stats", "clock")
 OLED_TEXT_MAX_LEN = 120
 # /data is the only directory the Supervisor keeps across restarts and updates.
 OLED_STATE_FILE = "/data/oled_state.json"
+SUPERVISOR_NETWORK_URL = "http://supervisor/network/info"
+HOST_IP_TTL_SEC = 300
 
 try:
     from periphery import GPIO as PeripheryGPIO
@@ -145,6 +148,8 @@ class UnifiedController:
         self.oled_cycle_index = 0
         self.last_oled_cycle = 0.0
         self._oled_fonts: Dict[int, Any] = {}
+        self._host_ip: Optional[str] = None
+        self._host_ip_read = 0.0
 
         self.mqtt = mqtt.Client()
         self.mqtt.on_connect = self._on_connect
@@ -676,6 +681,41 @@ class UnifiedController:
         return f"{value:.1f}C"
 
     def _get_ip(self) -> str:
+        now = time.time()
+        if self._host_ip and now - self._host_ip_read < HOST_IP_TTL_SEC:
+            return self._host_ip
+        self._host_ip_read = now
+        self._host_ip = self._supervisor_ip() or self._container_ip()
+        return self._host_ip
+
+    @staticmethod
+    def _supervisor_ip() -> Optional[str]:
+        """The address the host answers on, which is the one worth displaying.
+
+        Asking the container itself returns its 172.30.x.x bridge address —
+        correct, and useless to anyone reading the panel.
+        """
+        token = os.environ.get("SUPERVISOR_TOKEN")
+        if not token:
+            return None
+        request = urllib.request.Request(
+            SUPERVISOR_NETWORK_URL, headers={"Authorization": f"Bearer {token}"}
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=5) as response:
+                interfaces = json.load(response)["data"]["interfaces"]
+        except Exception:
+            logging.debug("Supervisor network info unavailable", exc_info=True)
+            return None
+        for interface in interfaces:
+            if not interface.get("primary"):
+                continue
+            for address in (interface.get("ipv4") or {}).get("address", []):
+                return address.split("/")[0]
+        return None
+
+    @staticmethod
+    def _container_ip() -> str:
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.connect(("8.8.8.8", 80))
@@ -697,10 +737,10 @@ class UnifiedController:
         if mode == "clock":
             self._draw_clock()
             return
-        lines = self._custom_lines() if mode == "custom" else self._stats_lines()
-        with canvas(self.oled) as draw:
-            for index, line in enumerate(lines):
-                draw.text((0, index * 12), line, fill="white")
+        if mode == "custom":
+            self._draw_custom()
+            return
+        self._draw_stats()
 
     def _current_cycle_mode(self) -> str:
         now = time.time()
@@ -721,11 +761,70 @@ class UnifiedController:
             f"IP {self._get_ip()}",
         ]
 
-    def _custom_lines(self) -> list:
-        text = self.oled_state["text"]
-        if not text:
-            return ["(no text set)"]
-        return textwrap.wrap(text, width=21)[:5]
+    def _draw_stats(self) -> None:
+        """Spread the lines over the panel, centred within their own slot.
+
+        A fixed size clipped the first and last lines, because five lines of
+        an 11 px face are taller than the 64 px the SSD1306 has.
+        """
+        lines = self._stats_lines()
+        with canvas(self.oled) as draw:
+            font = self._fit_lines(draw, lines)
+            slot = self.oled.height / len(lines)
+            top = max(0, (slot - self._glyph_height(font)) / 2)
+            for index, line in enumerate(lines):
+                draw.text((2, top + index * slot), line, font=font, fill="white")
+
+    def _fit_lines(self, draw, lines: list):
+        """Largest size at which every line fits the panel without wrapping."""
+        slot = self.oled.height / len(lines)
+        usable_width = self.oled.width - 4
+        for size in (14, 13, 12, 11, 10, 9, 8):
+            font = self._oled_font(size)
+            if self._glyph_height(font) > slot:
+                continue
+            if all(draw.textlength(line, font=font) <= usable_width for line in lines):
+                return font
+        return self._oled_font(8)
+
+    def _draw_custom(self) -> None:
+        """Centre the message and scale it to whatever the panel can hold.
+
+        A short message deserves the whole 128x64; the same code left at one
+        fixed size puts three words in a corner and looks broken.
+        """
+        text = self.oled_state["text"] or "(no text set)"
+        with canvas(self.oled) as draw:
+            font, lines = self._fit_text(draw, text)
+            line_height = self._line_height(font)
+            top = max(0, (self.oled.height - line_height * len(lines)) // 2)
+            for index, line in enumerate(lines):
+                self._draw_centered(draw, line, top + index * line_height, font)
+
+    def _fit_text(self, draw, text: str):
+        """Largest font size at which the text still fits the panel."""
+        for size in (30, 24, 19, 15, 12, 10):
+            font = self._oled_font(size)
+            char_width = draw.textlength("n", font=font) or 1
+            lines = textwrap.wrap(text, width=max(1, int(self.oled.width / char_width)))
+            if not lines:
+                continue
+            fits_height = self._line_height(font) * len(lines) <= self.oled.height
+            fits_width = all(
+                draw.textlength(line, font=font) <= self.oled.width for line in lines
+            )
+            if fits_height and fits_width:
+                return font, lines
+        smallest = self._oled_font(10)
+        return smallest, textwrap.wrap(text, width=24)[:5]
+
+    @staticmethod
+    def _glyph_height(font) -> int:
+        return font.getbbox("Ag")[3]
+
+    @classmethod
+    def _line_height(cls, font) -> int:
+        return cls._glyph_height(font) + 2
 
     def _draw_clock(self) -> None:
         now = datetime.now()

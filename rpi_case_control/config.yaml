@@ -1,8 +1,10 @@
 name: "Raspberry Pi Case Control"
 description: "Fan, RGB LEDs and OLED display for Raspberry Pi tower cases (GeeekPi and compatible), controlled from Home Assistant over MQTT."
-version: "1.5.1"
+version: "1.7.0"
 slug: "rpi_case_control"
 init: false
+# Reads the host's LAN address from the Supervisor for the OLED stats screen.
+hassio_api: true
 arch:
   - aarch64
   - amd64

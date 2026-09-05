@@ -107,6 +107,12 @@ so the add-on is useful even on a case that only has a fan.
 | `cycle` | Alternates `stats` and `clock` every `oled_cycle_sec` seconds |
 | `off` | Blank screen |
 
+<p>
+<img src="docs/oled-stats.jpg" width="270" alt="The OLED showing CPU temperature, load, RAM, disk and IP address">
+<img src="docs/oled-clock.jpg" width="270" alt="The OLED showing the time and the date">
+<img src="docs/oled-custom.jpg" width="270" alt="The OLED showing custom text sent from Home Assistant">
+</p>
+
 Writing to **OLED Text** switches the mode to `custom` on its own, so the text
 you just typed actually appears.
 
