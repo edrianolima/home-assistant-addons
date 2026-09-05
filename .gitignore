@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+._*
+.DS_Store
+
+# Secrets — NEVER commit these
+.env
+*.env
+.env.*
+!.env.example
+secrets.yaml
+credentials.json
+service-account.json

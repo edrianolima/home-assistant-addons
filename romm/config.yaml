@@ -1,0 +1,85 @@
+name: "RomM"
+description: "Self-hosted ROM library manager and in-browser player (EmulatorJS, Ruffle, js-dos). Wraps the official rommapp/romm image."
+version: "1.1.0"
+slug: "romm"
+# The upstream image ships its own s6-overlay supervision tree (nginx + gunicorn
+# + worker + valkey) started via ENTRYPOINT /docker-entrypoint.sh, CMD /init.
+# `init: false` stops the Supervisor injecting its own init so that tree runs
+# intact — the same pattern used by cloudflared_iptv.
+init: false
+arch:
+  - aarch64
+  - amd64
+startup: application
+# Enabled once the wrapper was validated end to end (2026-09-03). Keep the
+# watchdog OFF during long library scans: the Supervisor restarting the add-on
+# mid-scan throws the progress away.
+boot: auto
+# Web UI. No Ingress: RomM's nginx serves from the root and does not support
+# being mounted under the Ingress sub-path.
+ports:
+  8080/tcp: 8080
+ports_description:
+  8080/tcp: "RomM web interface"
+# The library lives in /media so it can be moved to external storage later
+# without touching this add-on: only the mount behind /media changes.
+map:
+  - media:rw
+  - share:rw
+options:
+  # --- Database (REQUIRED) — see README for the MariaDB add-on setup ---
+  # The password is NOT stored here — set it in the add-on Configuration tab
+  # (the Supervisor keeps it in /data/options.json, outside this repo) and use
+  # the same value in the MariaDB add-on's `logins`. run.sh refuses to start
+  # while it is empty.
+  db_host: "core-mariadb"
+  db_port: 3306
+  db_name: "romm"
+  db_user: "romm"
+  db_password: ""
+  # --- Library ---
+  # Base path holding library/, resources/, assets/ and config/.
+  # MUST be a single mount point: RomM hardlinks across these subdirectories,
+  # and a cross-device link fails with EXDEV.
+  base_path: "/media/romm"
+  # --- Metadata providers (all optional; without any, scans find no artwork) ---
+  screenscraper_user: ""
+  screenscraper_password: ""
+  steamgriddb_api_key: ""
+  retroachievements_api_key: ""
+  hasheous_api_enabled: true
+  # --- Performance — tuned for a Raspberry Pi 4 sharing the box with HA ---
+  # A scan is bound by metadata-provider latency, NOT by disk: measured disk
+  # utilisation stays at ~1% throughout. Workers run those lookups in parallel,
+  # so this is what sets the pace: 1.65 rom/min with one worker against 3.55
+  # with three, measured over hours from the roms.created_at column. It was set
+  # to 1 out of an unfounded I/O worry, and two 24h runs died on timeout because
+  # of it. 3 leaves a core for HA, and the Pi stays under 1.0 load.
+  scan_workers: 3
+  # Gunicorn workers. Upstream suggests 2×CPU+1 (= 9 here); 2 is deliberate,
+  # since Home Assistant is the priority tenant on this machine.
+  web_server_concurrency: 2
+  # RQ kills the scan job at this many seconds. Upstream's 14400 (4 h) is far
+  # too short for a first scan of a large library: the 2026-09-03 run died at
+  # 1067/6463 with JobTimeoutException. Metadata providers, not the Pi, set the
+  # pace — a single provider outage (Hasheous returned 503 that night) drags the
+  # rate from ~10/min to ~2/min while lookups burn their timeouts.
+  # 24 h; a resumed `quick` scan only processes ROMs absent from the DB.
+  scan_timeout: 86400
+  log_level: "INFO"
+schema:
+  db_host: str
+  db_port: port
+  db_name: str
+  db_user: str
+  db_password: password
+  base_path: str
+  screenscraper_user: str?
+  screenscraper_password: password?
+  steamgriddb_api_key: password?
+  retroachievements_api_key: password?
+  hasheous_api_enabled: bool
+  scan_workers: int(1,4)
+  web_server_concurrency: int(1,9)
+  scan_timeout: int(3600,172800)
+  log_level: list(DEBUG|INFO|WARNING|ERROR|CRITICAL)

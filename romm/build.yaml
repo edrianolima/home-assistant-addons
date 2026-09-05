@@ -1,0 +1,10 @@
+# Built FROM the official upstream image rather than a Home Assistant base:
+# reproducing it would mean rebuilding nginx+mod_zip, gunicorn, valkey,
+# EmulatorJS and RAHasher. Upstream publishes linux/arm64, so the Pi is covered.
+#
+# Pinned deliberately — `latest` would silently pull a new major on rebuild.
+# The plain tag (not -slim) is required: it is the one carrying EmulatorJS,
+# Ruffle and js-dos, which is what makes in-browser play work.
+build_from:
+  aarch64: rommapp/romm:5.2.0
+  amd64: rommapp/romm:5.2.0

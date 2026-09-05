@@ -1,0 +1,100 @@
+name: "Raspberry Pi Case Control"
+description: "Fan, RGB LEDs and OLED display for Raspberry Pi tower cases (GeeekPi and compatible), controlled from Home Assistant over MQTT."
+version: "1.5.1"
+slug: "rpi_case_control"
+init: false
+arch:
+  - aarch64
+  - amd64
+  - armhf
+  - armv7
+  - i386
+startup: services
+boot: auto
+gpio: true
+privileged:
+  - SYS_RAWIO
+devices:
+  - /dev/mem
+  - /dev/gpiomem
+  - /dev/gpiochip0
+  - /dev/gpiochip1
+  - /dev/vcio
+  - /dev/vc-mem
+  - /dev/i2c-0
+  - /dev/i2c-1
+options:
+  mqtt_host: "core-mosquitto"
+  mqtt_port: 1883
+  mqtt_username: "mqtt"
+  # Set in the add-on Configuration tab, not here — this repo is public.
+  mqtt_password: ""
+  mqtt_topic_prefix: "led2mqtt/light/ws281x"
+  mqtt_discovery: true
+  mqtt_discovery_prefix: "homeassistant"
+  led_count: 8
+  led_pin: 18
+  led_freq_hz: 800000
+  led_dma: 10
+  led_brightness: 255
+  led_invert: false
+  led_channel: 0
+  oled_enabled: true
+  oled_i2c_bus: 1
+  oled_i2c_address: "0x3c"
+  oled_rotate: 0
+  oled_interval_sec: 3
+  # stats (the five system lines), clock, custom (text set from Home
+  # Assistant), cycle (alternates stats and clock), or off. An OLED burns in
+  # with static content, so cycle and off both extend the panel's life.
+  # Only seeds the FIRST run: the mode and text are then kept in
+  # /data/oled_state.json, so what you pick in Home Assistant survives an
+  # add-on restart or update, and wins over this value.
+  oled_mode: "stats"
+  oled_cycle_sec: 10
+  state_publish_interval_sec: 30
+  metrics_publish_interval_sec: 30
+  fan_enabled: true
+  fan_pin: 13
+  fan_pwm_freq_hz: 50
+  fan_invert: false
+  fan_auto_mode: true
+  fan_temp_min_c: 42
+  fan_temp_max_c: 65
+  fan_min_percent: 25
+  fan_max_percent: 100
+  log_level: "INFO"
+schema:
+  mqtt_host: str
+  mqtt_port: int
+  mqtt_username: str
+  mqtt_password: password
+  mqtt_topic_prefix: str
+  mqtt_discovery: bool
+  mqtt_discovery_prefix: str
+  led_count: int
+  led_pin: int
+  led_freq_hz: int
+  led_dma: int
+  led_brightness: int
+  led_invert: bool
+  led_channel: int
+  oled_enabled: bool
+  oled_i2c_bus: int
+  oled_i2c_address: str
+  oled_rotate: int
+  oled_interval_sec: int
+  oled_mode: list(stats|clock|custom|cycle|off)
+  oled_cycle_sec: int(3,3600)
+  state_publish_interval_sec: int
+  metrics_publish_interval_sec: int
+  fan_enabled: bool
+  fan_pin: int
+  fan_pwm_freq_hz: int
+  fan_invert: bool
+  fan_auto_mode: bool
+  fan_temp_min_c: int
+  fan_temp_max_c: int
+  fan_min_percent: int
+  fan_max_percent: int
+  log_level: str
