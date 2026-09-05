@@ -31,7 +31,11 @@ OLED_TEXT_MAX_LEN = 120
 # /data is the only directory the Supervisor keeps across restarts and updates.
 OLED_STATE_FILE = "/data/oled_state.json"
 SUPERVISOR_NETWORK_URL = "http://supervisor/network/info"
+SUPERVISOR_ADDON_URL = "http://supervisor/addons/self/info"
 HOST_IP_TTL_SEC = 300
+# Home Assistant keys the device off this, never off the display name, so an
+# installation that renames the device keeps its history and its entity ids.
+DEVICE_ID = "ws281x_tower_case"
 
 try:
     from periphery import GPIO as PeripheryGPIO
@@ -41,6 +45,7 @@ except Exception:
 
 @dataclass
 class AppConfig:
+    device_name: str = "GeeekPi Tower Case"
     mqtt_host: str = "core-mosquitto"
     mqtt_port: int = 1883
     mqtt_username: str = "mqtt"
@@ -122,12 +127,13 @@ class UnifiedController:
         self.discovery_oled_text_topic = (
             f"{self.cfg.mqtt_discovery_prefix}/text/ws281x_tower_oled_text/config"
         )
+        # Renaming the device renames every entity derived from it, so the id
+        # is fixed and only the label follows the option.
         self.device_info = {
-            "ids": ["ws281x_tower_case"],
-            "name": "GeeekPi Tower Case",
-            "mf": "GeeekPi",
-            "mdl": "Mini Tower for Raspberry Pi 4",
-            "sw": "ws281x_led_control",
+            "ids": [DEVICE_ID],
+            "name": self.cfg.device_name,
+            "mdl": "Raspberry Pi case with WS281x LEDs, PWM fan and OLED",
+            "sw": self._addon_version(),
         }
 
         # `color_mode` is what lets Home Assistant read `color` under the JSON
@@ -689,25 +695,36 @@ class UnifiedController:
         return self._host_ip
 
     @staticmethod
-    def _supervisor_ip() -> Optional[str]:
+    def _supervisor_get(url: str) -> Optional[dict]:
+        token = os.environ.get("SUPERVISOR_TOKEN")
+        if not token:
+            return None
+        request = urllib.request.Request(
+            url, headers={"Authorization": f"Bearer {token}"}
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=5) as response:
+                return json.load(response)["data"]
+        except Exception:
+            logging.debug("Supervisor call to %s failed", url, exc_info=True)
+            return None
+
+    @classmethod
+    def _addon_version(cls) -> str:
+        data = cls._supervisor_get(SUPERVISOR_ADDON_URL)
+        return (data or {}).get("version") or "unknown"
+
+    @classmethod
+    def _supervisor_ip(cls) -> Optional[str]:
         """The address the host answers on, which is the one worth displaying.
 
         Asking the container itself returns its 172.30.x.x bridge address —
         correct, and useless to anyone reading the panel.
         """
-        token = os.environ.get("SUPERVISOR_TOKEN")
-        if not token:
+        data = cls._supervisor_get(SUPERVISOR_NETWORK_URL)
+        if not data:
             return None
-        request = urllib.request.Request(
-            SUPERVISOR_NETWORK_URL, headers={"Authorization": f"Bearer {token}"}
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=5) as response:
-                interfaces = json.load(response)["data"]["interfaces"]
-        except Exception:
-            logging.debug("Supervisor network info unavailable", exc_info=True)
-            return None
-        for interface in interfaces:
+        for interface in data["interfaces"]:
             if not interface.get("primary"):
                 continue
             for address in (interface.get("ipv4") or {}).get("address", []):
