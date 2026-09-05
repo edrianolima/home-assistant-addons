@@ -126,6 +126,13 @@ add-on update. The `oled_mode` option only seeds the very first run.
 
 ## Configuration
 
+> [!NOTE]
+> `device_name` (default `GeeekPi Tower Case`) is more than a label: Home
+> Assistant derives every entity ID from it. Change it before you build
+> automations or dashboards around those entity IDs, since renaming it later
+> renames all of them, including in the [dashboard card](#dashboard-card)
+> example below.
+
 ```yaml
 mqtt_host: core-mosquitto
 mqtt_username: mqtt
