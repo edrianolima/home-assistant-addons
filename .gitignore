@@ -2,6 +2,9 @@
 __pycache__/
 *.pyc
 
+# Claude Code per-machine settings
+.claude/settings.local.json
+
 # macOS
 ._*
 .DS_Store
@@ -14,3 +17,13 @@ __pycache__/
 secrets.yaml
 credentials.json
 service-account.json
+
+# Add-on options dumps — /data/options.json carries the MQTT password, so any
+# copy of it that lands in a working tree must never be committed.
+options.json
+*options.json
+*.options.json
+
+# Scratch area for anything that has to sit next to the code without shipping:
+# option dumps, throwaway captures, notes. Deliberately never committed.
+_local/
